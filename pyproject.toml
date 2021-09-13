@@ -7,7 +7,7 @@ authors = ["Maksim Sandybekov <maksim.sandybekov@live.de>"]
 [tool.poetry.dependencies]
 python = "^3.8"
 tensorflow = "2.2.0"
-tf-al = "^0.0.1"
+tf-al = "^0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
