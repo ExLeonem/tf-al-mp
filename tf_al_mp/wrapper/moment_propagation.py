@@ -201,7 +201,6 @@ class MomentPropagation(Model):
     # ---------------------------
 
     def get_query_fn(self, name):
-        print("use moment propagation acquisition", name)
 
         if name == "max_entropy":
             return self.__max_entropy
