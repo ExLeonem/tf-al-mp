@@ -1,8 +1,8 @@
 import numpy as np
 import tensorflow as tf
+from scipy.stats import norm
 
 from tf_al.wrapper import Model, ModelType, Mode
-
 from ..utils.moment_propagation import MP
 
 
@@ -14,11 +14,11 @@ class MomentPropagation(Model):
 
     """
 
-    def __init__(self, model, config=None, **kwargs):
+    def __init__(self, model, config=None, verbose=False, **kwargs):
         model_type = ModelType.MOMENT_PROPAGATION
+        super(MomentPropagation, self).__init__(model, config, model_type=model_type, verbose=verbose, **kwargs)
 
-        super(MomentPropagation, self).__init__(model, config, model_type=model_type, **kwargs)
-
+        self.__verbose = verbose
         self.__mp_model = self._create_mp_model(model)
         self.__compile_params = None
 
@@ -60,7 +60,9 @@ class MomentPropagation(Model):
         self.logger.info("Evaluate kwargs: {}".format(kwargs))
 
         self.set_mode(Mode.EVAL)
-        exp, var = self.__mp_model.predict(inputs, **kwargs)
+        exp, _var = self.__mp_model.predict(inputs, **kwargs)
+        exp, _var = mp.MP.Gaussian_Softmax(exp, _var)
+
         loss, acc = self.__evaluate(exp, targets)
         return {"loss": loss, "accuracy": acc}
 
@@ -98,7 +100,8 @@ class MomentPropagation(Model):
         return dict(zip(metric_names, values))
 
 
-    def _create_mp_model(self, model):
+
+    def _create_mp_model(self, model, drop_softmax=True):
         """
             Transforms the set base model into an moment propagation model.
 
@@ -106,7 +109,15 @@ class MomentPropagation(Model):
                 (tf.Model) as a moment propagation model.
         """
         _mp = MP()
-        return _mp.create_MP_Model(model=model, use_mp=True, verbose=True)
+        
+        # Remove softmax layer for inference with mp model
+        if "softmax" in model._layers[-1].name and drop_softmax:
+            cloned_model = tf.keras.models.clone_model(model)
+            cloned_model.set_weights(model.get_weights())
+            cloned_model._layers.pop(-1)
+            return _mp.create_MP_Model(model=cloned_model, use_mp=True)
+
+        return _mp.create_MP_Model(model=model, use_mp=True, verbose=self.__verbose)
 
 
     def variance(self, predictions):
@@ -207,7 +218,8 @@ class MomentPropagation(Model):
     def __max_entropy(self, data, **kwargs):
         # Expectation and variance of form (batch_size, num_classes)
         # Expectation equals the prediction
-        predictions = self.__mp_model.predict(x=data)
+        exp, var = self.__mp_model.predict(x=data)
+        predictions = mp.MP.Gaussian_Softmax(exp, var)
 
         # Need to scaled values because zeros
         class_probs = self.expectation(predictions)
@@ -216,22 +228,26 @@ class MomentPropagation(Model):
         return -np.sum(class_probs*class_prob_logs, axis=1)
 
     
-    def __bald(self, data, **kwargs):
-        """
-            [ ] Check if information about variance is needed here. Compare to mc dropout bald.
-        """
-        predictions = self.__mp_model.predict(x=data)
-        expectation = self.expectation(predictions)
-        variance = self.variance(predictions)
+    def __bald(self, data, num_samples=100, **kwargs):
+        exp, var = self.__mp_model.predict(x=data)
 
-        first_term = -np.sum(expectation * np.log(np.abs(expectation) + 1e-100), axis=1)
-        predictions = self.extend_binary_predictions(predictions)
-        second_term = np.sum(np.mean(predictions*np.log(np.abs(predictions) + 1e-100), axis=1), axis=1)
-        return first_term + second_term
+        exp_shape = list(exp.shape)
+        output_shape = tuple([num_samples] + exp_shape) # (num samples, num datapoints, num_classes)
+        sampled_data = norm(exp, np.sqrt(var)).rvs(size=output_shape)
+        class_sample_probs = tf.keras.activations.softmax(tf.convert_to_tensor(sampled_data))
+
+        sample_entropy = np.sum(class_sample_probs*np.log(class_sample_probs+.001), axis=-1)
+        disagreement = np.sum(sample_entropy, axis=0)/num_samples
+
+        exp, _var = mp.MP.Gaussian_Softmax(exp, var)
+        entropy = np.sum(exp*np.log(exp+.001), axis=1)
+
+        return -entropy+disagreement
 
 
     def __max_var_ratio(self, data, **kwargs):
-        predictions = self.__mp_model.predict(x=data)
+        exp, var = self.__mp_model.predict(x=data)
+        predictions = mp.MP.Gaussian_Softmax(exp, var)
         expectation = self.expectation(predictions)
 
         col_max_indices = np.argmax(expectation, axis=1)        
@@ -241,7 +257,17 @@ class MomentPropagation(Model):
 
     
     def __std_mean(self, data, **kwargs):
-        predictions = self.__mp_model.predict(data, **kwargs)
+        exp, var = self.__mp_model.predict(data, **kwargs)
+        predictions = mp.MP.Gaussian_Softmax(exp, var)
         variance = self.variance(predictions)
         std = np.square(variance)
         return np.mean(std, axis=-1)
+    
+
+
+    # ----------
+    # Setter/-Getter
+    # ---------------------
+
+    def get_mp_model(self):
+        return self.__mp_model
