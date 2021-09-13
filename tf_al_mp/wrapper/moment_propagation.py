@@ -1,6 +1,7 @@
 import numpy as np
-from tf_al import Model, ModelType, Mode
 import tensorflow as tf
+
+from tf_al.wrapper import Model, ModelType, Mode
 
 from ..utils import mp
 
