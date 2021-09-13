@@ -3,7 +3,7 @@ import tensorflow as tf
 
 from tf_al.wrapper import Model, ModelType, Mode
 
-from ..utils import mp
+from ..utils.moment_propagation import MP
 
 
 
@@ -105,7 +105,7 @@ class MomentPropagation(Model):
             Returns:
                 (tf.Model) as a moment propagation model.
         """
-        _mp = mp.MP()
+        _mp = MP()
         return _mp.create_MP_Model(model=model, use_mp=True, verbose=True)
 
 
