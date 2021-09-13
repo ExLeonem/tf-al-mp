@@ -61,7 +61,7 @@ class MomentPropagation(Model):
 
         self.set_mode(Mode.EVAL)
         exp, _var = self.__mp_model.predict(inputs, **kwargs)
-        exp, _var = mp.MP.Gaussian_Softmax(exp, _var)
+        exp, _var = MP.Gaussian_Softmax(exp, _var)
 
         loss, acc = self.__evaluate(exp, targets)
         return {"loss": loss, "accuracy": acc}
@@ -219,7 +219,7 @@ class MomentPropagation(Model):
         # Expectation and variance of form (batch_size, num_classes)
         # Expectation equals the prediction
         exp, var = self.__mp_model.predict(x=data)
-        predictions = mp.MP.Gaussian_Softmax(exp, var)
+        predictions = MP.Gaussian_Softmax(exp, var)
 
         # Need to scaled values because zeros
         class_probs = self.expectation(predictions)
@@ -239,7 +239,7 @@ class MomentPropagation(Model):
         sample_entropy = np.sum(class_sample_probs*np.log(class_sample_probs+.001), axis=-1)
         disagreement = np.sum(sample_entropy, axis=0)/num_samples
 
-        exp, _var = mp.MP.Gaussian_Softmax(exp, var)
+        exp, _var = MP.Gaussian_Softmax(exp, var)
         entropy = np.sum(exp*np.log(exp+.001), axis=1)
 
         return -entropy+disagreement
@@ -247,7 +247,7 @@ class MomentPropagation(Model):
 
     def __max_var_ratio(self, data, **kwargs):
         exp, var = self.__mp_model.predict(x=data)
-        predictions = mp.MP.Gaussian_Softmax(exp, var)
+        predictions = MP.Gaussian_Softmax(exp, var)
         expectation = self.expectation(predictions)
 
         col_max_indices = np.argmax(expectation, axis=1)        
@@ -258,7 +258,7 @@ class MomentPropagation(Model):
     
     def __std_mean(self, data, **kwargs):
         exp, var = self.__mp_model.predict(data, **kwargs)
-        predictions = mp.MP.Gaussian_Softmax(exp, var)
+        predictions = MP.Gaussian_Softmax(exp, var)
         variance = self.variance(predictions)
         std = np.square(variance)
         return np.mean(std, axis=-1)
