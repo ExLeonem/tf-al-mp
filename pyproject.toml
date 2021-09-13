@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "tf_al_module"
+name = "tf_al_mp"
 version = "0.0.1"
 description = ""
 authors = ["Maksim Sandybekov <maksim.sandybekov@live.de>"]
