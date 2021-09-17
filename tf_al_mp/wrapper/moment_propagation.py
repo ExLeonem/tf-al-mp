@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 from scipy.stats import norm
 
-from tf_al.wrapper import Model, ModelType, Mode
+from tf_al.wrapper import Model
 from ..utils.moment_propagation import MP
 
 
@@ -15,8 +15,7 @@ class MomentPropagation(Model):
     """
 
     def __init__(self, model, config=None, verbose=False, **kwargs):
-        model_type = ModelType.MOMENT_PROPAGATION
-        super(MomentPropagation, self).__init__(model, config, model_type=model_type, verbose=verbose, **kwargs)
+        super(MomentPropagation, self).__init__(model, config, model_type="moment_propagation", verbose=verbose, **kwargs)
 
         self.__verbose = verbose
         self.__mp_model = self._create_mp_model(model)
@@ -59,7 +58,6 @@ class MomentPropagation(Model):
 
         self.logger.info("Evaluate kwargs: {}".format(kwargs))
 
-        self.set_mode(Mode.EVAL)
         exp, _var = self.__mp_model.predict(inputs, **kwargs)
         exp, _var = MP.Gaussian_Softmax(exp, _var)
 
