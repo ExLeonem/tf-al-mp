@@ -83,21 +83,11 @@ class MomentPropagation(Model):
         loss_fn = tf.keras.losses.get(self._model.loss)
         loss = loss_fn(targets, prediction)
         
-        prediction = self.extend_binary_predictions(prediction)
-
+        prediction = self._problem.extend_binary_prediction(prediction)
         labels = np.argmax(prediction, axis=1)
         acc = np.mean(labels == targets)
         return [np.mean(loss.numpy()), acc]
-
-
-    def map_eval_values(self, values, custom_names=None):
-        """
-            Maps the values returned from evaluate(inputs, targets) to specific keys.
-        """
-        metric_names = ["loss", "accuracy"] if custom_names is None else custom_names
-        return dict(zip(metric_names, values))
-
-
+        
 
     def _create_mp_model(self, model, drop_softmax=True):
         """
@@ -120,16 +110,46 @@ class MomentPropagation(Model):
 
     def variance(self, predictions):
         expectation, variance = predictions
-
-        variance = self.extend_binary_predictions(variance)
+        variance = self._problem.extend_binary_predictions(variance)
         return self.__cast_tensor_to_numpy(variance)
 
 
     def expectation(self, predictions):
         expectation, variance = predictions
-        
-        expectation = self.extend_binary_predictions(expectation)
+        expectation = self._problem.extend_binary_predictions(expectation)
         return self.__cast_tensor_to_numpy(expectation) 
+
+
+
+    # -----------
+    # Metrics hooks
+    # -----------------------
+
+    def _on_evaluate_loss(self, predictions, inputs, targets, **kwargs):
+        """
+
+        """
+        self.logger.info("Evaluate kwargs: {}".format(kwargs))
+        exp, _var = predictions
+        exp, _var = MP.Gaussian_Softmax(exp, _var)
+
+        loss_fn = tf.keras.losses.get(self._model.loss)
+        loss = loss_fn(targets, exp)
+        return {"loss": loss}
+
+
+        prediction = self._problem.extend_binary_prediction(prediction)
+        labels = np.argmax(prediction, axis=1)
+        acc = np.mean(labels == targets)
+        return [np.mean(loss.numpy()), acc]
+
+
+
+    def _on_evaluate_acc(self, **kwargs):
+        """
+
+        """
+        pass
 
 
     # --------
@@ -149,35 +169,6 @@ class MomentPropagation(Model):
     # --------
     # Utilities
     # ---------------
-
-    def extend_binary_predictions(self, predictions):
-        """
-            Extend dimensions for binary classification problems.
-
-            Parameters:
-                predictions (numpy.ndarray): Predictions made by the network.
-
-            Returns:
-                (numpy.ndarray) The predictions with extended dimension.
-        """
-        # Don't modify predictions shape in regression case
-        if not self.is_classification():
-            return predictions
-
-        # Binary case: calculate complementary prediction and concatenate
-        if self.is_binary():
-            bin_alt_class = (1 + np.zeros(predictions.shape)) - predictions
-
-            # Expand dimensions for predictions to concatenate. Is this needed?
-            # bin_alt_class = np.expand_dims(bin_alt_class, axis=-1)
-            # predictions = np.expand_dims(predictions, axis=-1)
-
-            # Concatenate predictions
-            class_axis = len(predictions.shape) + 1
-            predictions = np.concatenate([predictions, bin_alt_class], axis=len(predictions.shape)-1)
-        
-        return predictions
-
     
     def __cast_tensor_to_numpy(self, values):
         """
