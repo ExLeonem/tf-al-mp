@@ -19,7 +19,8 @@ class MomentPropagation(Model):
 
         self.__verbose = verbose
         self.__mp_model = self._create_mp_model(model)
-        self.__compile_params = None
+        self._compile_params = None
+
 
 
     def __call__(self, inputs, **kwargs):
@@ -36,10 +37,15 @@ class MomentPropagation(Model):
 
         if kwargs is not None and len(kwargs.keys()) > 0:
             print("Set compile params")
-            self.__compile_params = kwargs
+            self._compile_params = kwargs
 
-        self._model.compile(**self.__compile_params)
-        # self.__base_model.compile(**self.__compile_params)
+        self._model.compile(**self._compile_params)
+        # self.__base_model.compile(**self._compile_params)
+
+        metrics = self._create_init_metrics(kwargs)
+        metric_names = self._extract_metric_names(metrics)
+        self.eval_metrics = self._init_metrics("stochastic", metric_names)
+
 
 
     def evaluate(self, inputs, targets, **kwargs):
@@ -59,10 +65,13 @@ class MomentPropagation(Model):
         self.logger.info("Evaluate kwargs: {}".format(kwargs))
 
         exp, _var = self.__mp_model.predict(inputs, **kwargs)
-        exp, _var = MP.Gaussian_Softmax(exp, _var)
+        predictions = MP.Gaussian_Softmax(exp, _var)
+        
+        output_metrics = {}
+        for metric in self.eval_metrics:
+            output_metrics[metric.name] = metric(targets, predictions)
 
-        loss, acc = self.__evaluate(exp, targets)
-        return {"loss": loss, "accuracy": acc}
+        return output_metrics
 
 
     def __evaluate(self, prediction, targets):
@@ -145,11 +154,6 @@ class MomentPropagation(Model):
 
 
 
-    def _on_evaluate_acc(self, **kwargs):
-        """
-
-        """
-        pass
 
 
     # --------
