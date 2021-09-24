@@ -3,6 +3,7 @@ import tensorflow as tf
 from scipy.stats import norm
 
 from tf_al.wrapper import Model
+from tf_al.utils import beta_approximated_upper_joint_entropy
 from ..utils.moment_propagation import MP
 
 
@@ -22,7 +23,6 @@ class MomentPropagation(Model):
         self._compile_params = None
 
 
-
     def __call__(self, inputs, **kwargs):
         return self.__mp_model.predict(inputs, **kwargs)
 
@@ -40,12 +40,9 @@ class MomentPropagation(Model):
             self._compile_params = kwargs
 
         self._model.compile(**self._compile_params)
-        # self.__base_model.compile(**self._compile_params)
-
         metrics = self._create_init_metrics(kwargs)
         metric_names = self._extract_metric_names(metrics)
         self.eval_metrics = self._init_metrics("stochastic", metric_names)
-
 
 
     def evaluate(self, inputs, targets, **kwargs):
@@ -73,30 +70,6 @@ class MomentPropagation(Model):
 
         return output_metrics
 
-
-    def __evaluate(self, prediction, targets):
-        """
-            Calculate the accuracy and the loss
-            of the prediction.
-
-            Parameters:
-                prediction (numpy.ndarray): The predictions made.
-                targets (numpy.ndarray): The target values.
-
-            Returns:
-                (list()) The accuracy and 
-        """
-
-        self.logger.info("Prediction shape: {}".format(prediction.shape))
-
-        loss_fn = tf.keras.losses.get(self._model.loss)
-        loss = loss_fn(targets, prediction)
-        
-        prediction = self._problem.extend_binary_prediction(prediction)
-        labels = np.argmax(prediction, axis=1)
-        acc = np.mean(labels == targets)
-        return [np.mean(loss.numpy()), acc]
-        
 
     def _create_mp_model(self, model, drop_softmax=True):
         """
@@ -127,33 +100,6 @@ class MomentPropagation(Model):
         expectation, variance = predictions
         expectation = self._problem.extend_binary_predictions(expectation)
         return self.__cast_tensor_to_numpy(expectation) 
-
-
-
-    # -----------
-    # Metrics hooks
-    # -----------------------
-
-    def _on_evaluate_loss(self, predictions, inputs, targets, **kwargs):
-        """
-
-        """
-        self.logger.info("Evaluate kwargs: {}".format(kwargs))
-        exp, _var = predictions
-        exp, _var = MP.Gaussian_Softmax(exp, _var)
-
-        loss_fn = tf.keras.losses.get(self._model.loss)
-        loss = loss_fn(targets, exp)
-        return {"loss": loss}
-
-
-        prediction = self._problem.extend_binary_prediction(prediction)
-        labels = np.argmax(prediction, axis=1)
-        acc = np.mean(labels == targets)
-        return [np.mean(loss.numpy()), acc]
-
-
-
 
 
     # --------
@@ -207,10 +153,12 @@ class MomentPropagation(Model):
         if name == "std_mean":
             return self.__std_mean
 
+        elif name == "baba":
+            return self.__baba
+
 
     def __max_entropy(self, data, **kwargs):
         # Expectation and variance of form (batch_size, num_classes)
-        # Expectation equals the prediction
         exp, var = self.__mp_model.predict(x=data)
         predictions = MP.Gaussian_Softmax(exp, var)
 
@@ -234,7 +182,6 @@ class MomentPropagation(Model):
 
         exp, _var = MP.Gaussian_Softmax(exp, var)
         entropy = np.sum(exp*np.log(exp+.001), axis=1)
-
         return -entropy+disagreement
 
 
@@ -256,6 +203,45 @@ class MomentPropagation(Model):
         std = np.square(variance)
         return np.mean(std, axis=-1)
     
+
+    def __baba(self, data, num_samples=100, **kwargs):
+        """
+            Normalized mutual information
+
+            Implementation of acquisition function described in:
+            BABA: Beta Approximation for Bayesian Active Learning, Jae Oh Woo
+        """
+        # predictions shape (batch, num_predictions, num_classes)
+        exp, var = self.__mp_model.predict(x=data)
+
+        # BALD term
+        exp_shape = list(exp.shape)
+        output_shape = tuple([num_samples] + exp_shape) # (num samples, num datapoints, num_classes)
+        sampled_data = norm(exp, np.sqrt(var)).rvs(size=output_shape)
+        class_sample_probs = tf.keras.activations.softmax(tf.convert_to_tensor(sampled_data))
+        disagreement = self.__disagreement(class_sample_probs, num_samples)
+        exp, var = MP.Gaussian_Softmax(exp, var)
+        bald_term = -self.__entropy(exp)+disagreement
+        
+        # Beta approximation of upper joint entropy
+        a = ((np.power(exp, 2)*(1-exp))/(var+.0001))-exp
+        b = ((1/exp)-1)*a
+        upper_joint_entropy = beta_approximated_upper_joint_entropy(a, b)
+        return bald_term/np.abs(upper_joint_entropy)
+
+
+
+    # ---------
+    # Utilities
+    # ---------------
+
+    def __entropy(self, values):
+        return np.sum(values*np.log(values+.001), axis=1)
+
+    
+    def __disagreement(self, class_sample_probs, num_samples):
+        sample_entropy = np.sum(class_sample_probs*np.log(class_sample_probs+.001), axis=-1)
+        return np.sum(sample_entropy, axis=0)/num_samples
 
 
     # ----------
