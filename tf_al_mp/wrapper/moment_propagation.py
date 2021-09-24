@@ -1,6 +1,7 @@
 import numpy as np
 import tensorflow as tf
 from scipy.stats import norm
+import tensorflow as tf
 
 from tf_al.wrapper import Model
 from tf_al.utils import beta_approximated_upper_joint_entropy
@@ -242,6 +243,12 @@ class MomentPropagation(Model):
     def __disagreement(self, class_sample_probs, num_samples):
         sample_entropy = np.sum(class_sample_probs*np.log(class_sample_probs+.001), axis=-1)
         return np.sum(sample_entropy, axis=0)/num_samples
+
+
+    def reset(self, pool, dataset):
+        self._model = tf.keras.models.clone_model(self._model)
+        self._model.compile(**self._compile_params)
+        self.__mp_model = self._create_mp_model(self._model)
 
 
     # ----------
