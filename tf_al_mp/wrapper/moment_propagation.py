@@ -37,7 +37,6 @@ class MomentPropagation(Model):
     def compile(self, **kwargs):
 
         if kwargs is not None and len(kwargs.keys()) > 0:
-            print("Set compile params")
             self._compile_params = kwargs
 
         self._model.compile(**self._compile_params)
@@ -201,7 +200,7 @@ class MomentPropagation(Model):
         exp, var = self.__mp_model.predict(data, **kwargs)
         predictions = MP.Gaussian_Softmax(exp, var)
         variance = self.variance(predictions)
-        std = np.square(variance)
+        std = np.sqrt(variance)
         return np.mean(std, axis=-1)
     
 
